@@ -1,13 +1,27 @@
 spring:
+  # EmbeddedKafkaBroker sets spring.embedded.kafka.brokers at context startup.
+  # Pinning it here ensures the producer uses the embedded broker, not localhost:9092.
+  kafka:
+    bootstrap-servers: ${spring.embedded.kafka.brokers:localhost:9092}
+    producer:
+      acks: 1
+      retries: 0
+      properties:
+        # Disable idempotence in tests: avoids an InitProducerIdRequest round-trip
+        # on the very first send, which can exceed the 5-second timeout on a cold CI runner.
+        enable.idempotence: false
+        delivery.timeout.ms: 30000
+
   jpa:
     hibernate:
-      # Tests use Testcontainers Postgres; Flyway runs normally but we also allow
-      # Hibernate to create the schema so tests are self-contained.
       ddl-auto: create-drop
     show-sql: false
+
   flyway:
-    enabled: false   # Hibernate create-drop handles schema in tests
+    enabled: false
 
 flashsale:
   security:
     api-key: test-api-key
+  kafka:
+    send-timeout-seconds: 15

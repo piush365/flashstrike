@@ -18,6 +18,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.util.Set;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -26,12 +28,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @Testcontainers
 @EmbeddedKafka(
-    partitions = 1,
-    topics = {"flash-sale-orders", "flash-sale-orders.DLT"},
-    brokerProperties = {
-        "listeners=PLAINTEXT://localhost:${kafka.port:0}",
-        "auto.create.topics.enable=true"
-    }
+    partitions = 6,
+    topics = {"flash-sale-orders", "flash-sale-orders.DLT"}
 )
 @ActiveProfiles("test")
 class FlashSaleIntegrationTest {
@@ -45,13 +43,21 @@ class FlashSaleIntegrationTest {
     @Autowired private StringRedisTemplate redisTemplate;
     @Autowired private OrderRepository orderRepository;
 
-    @Value("${flashsale.security.api-key:dev-api-key-change-in-production}")
+    @Value("${flashsale.security.api-key}")
     private String apiKey;
 
     @BeforeEach
-    void resetInventory() {
+    void resetState() {
+        // Reset inventory
         redisTemplate.delete("stock:product:IPHONE15");
         redisTemplate.opsForValue().set("stock:product:IPHONE15", "10");
+
+        // Clear rate-limiter keys so tests don't bleed into each other
+        Set<String> rateLimitKeys = redisTemplate.keys("rate_limiter:*");
+        if (rateLimitKeys != null && !rateLimitKeys.isEmpty()) {
+            redisTemplate.delete(rateLimitKeys);
+        }
+
         orderRepository.deleteAll();
     }
 
@@ -115,7 +121,7 @@ class FlashSaleIntegrationTest {
 
         for (int i = 0; i < 20; i++) {
             mockMvc.perform(post("/api/v1/flash-sale/buy")
-                            .param("userId", "user" + i)
+                            .param("userId", "buyer" + i)
                             .param("productId", "IPHONE15")
                             .header(ApiKeyAuthFilter.API_KEY_HEADER, apiKey));
         }

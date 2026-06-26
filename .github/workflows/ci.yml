@@ -63,8 +63,11 @@ jobs:
           distribution: 'temurin'
           cache: 'maven'
 
+      - name: Compile (reuse cached build)
+        run: ./mvnw compile test-compile -q
+
       - name: Run integration tests
-        run: ./mvnw verify -Dtest="FlashSaleIntegrationTest" -DfailIfNoTests=false
+        run: ./mvnw test -Dtest="FlashSaleIntegrationTest" -DfailIfNoTests=false
         env:
           REDIS_HOST: localhost
           API_KEY: ci-test-api-key
