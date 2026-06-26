@@ -1,37 +1,66 @@
 spring:
   application:
     name: flash-sale-service
+
   datasource:
-    url: jdbc:postgresql://localhost:5432/flashsaledb?options=-c%20TimeZone%3DUTC
-    username: flashuser
-    password: flashpassword
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/flashsaledb}
+    username: ${DB_USERNAME:flashuser}
+    password: ${DB_PASSWORD:flashpassword}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 3000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
   jpa:
     hibernate:
-      ddl-auto: update
-    show-sql: true
+      # Flyway manages the schema; Hibernate only validates it matches the entities.
+      ddl-auto: validate
+    # show-sql is off in production; enable via logging.level.org.hibernate.SQL=DEBUG in dev only.
+    show-sql: false
     properties:
       hibernate:
-        format_sql: true
+        format_sql: false
         jdbc:
           time_zone: UTC
+
   data:
     redis:
-      host: localhost
-      port: 6379
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
   kafka:
-    bootstrap-servers: localhost:9092
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+        delivery.timeout.ms: 10000
     consumer:
       group-id: flash-sale-group
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      # Restrict to this application's domain package only — never trust all packages.
       properties:
-        spring.json.trusted.packages: "*"
-# 4. Observability & Metrics Configuration
+        spring.json.trusted.packages: "com.example.flashsale.domain"
+    listener:
+      concurrency: 3
+
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+# Observability
 management:
   endpoints:
     web:
@@ -40,3 +69,38 @@ management:
   metrics:
     tags:
       application: flash-sale-service
+  health:
+    redis:
+      enabled: true
+    db:
+      enabled: true
+
+# Application-level config
+flashsale:
+  security:
+    api-key: ${API_KEY:dev-api-key-change-in-production}
+  rate-limit:
+    requests-per-minute: 3
+    key-ttl: PT2M
+  inventory:
+    default-product-id: IPHONE15
+    initial-stock: 100
+  kafka:
+    orders-topic: flash-sale-orders
+    send-timeout-seconds: 5
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      kafka:
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 5
+        slow-call-duration-threshold: 6s
+        slow-call-rate-threshold: 80
+        register-health-indicator: true
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{correlationId}] %logger{36} - %msg%n"

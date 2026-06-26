@@ -1,0 +1,9 @@
+apiVersion: 1
+
+providers:
+  - name: Flash Sale Dashboards
+    folder: Flash Sale
+    type: file
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: true

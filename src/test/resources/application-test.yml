@@ -1,0 +1,13 @@
+spring:
+  jpa:
+    hibernate:
+      # Tests use Testcontainers Postgres; Flyway runs normally but we also allow
+      # Hibernate to create the schema so tests are self-contained.
+      ddl-auto: create-drop
+    show-sql: false
+  flyway:
+    enabled: false   # Hibernate create-drop handles schema in tests
+
+flashsale:
+  security:
+    api-key: test-api-key

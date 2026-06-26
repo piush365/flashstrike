@@ -1,0 +1,106 @@
+{
+  "title": "Flash Sale System",
+  "uid": "flashsale-main",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Order Rate by Result (req/s)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(flashsale_orders_total[1m])) by (result)",
+          "legendFormat": "{{result}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Accepted vs Sold Out",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(increase(flashsale_orders_total{result=\"accepted\"}[5m]))",
+          "legendFormat": "Accepted (5m)"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Rate Limited Requests",
+      "type": "stat",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(increase(flashsale_orders_total{result=\"rate_limited\"}[5m]))",
+          "legendFormat": "Rate Limited (5m)"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "HTTP Request Latency p99 (ms)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{uri=\"/api/flash-sale/buy\"}[1m])) by (le)) * 1000",
+          "legendFormat": "p99 latency"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Consumer Orders Saved (5m)",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 4, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(increase(flashsale_consumer_orders_total{status=\"saved\"}[5m]))",
+          "legendFormat": "DB writes (5m)"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "JVM Heap Used (MB)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "jvm_memory_used_bytes{area=\"heap\"} / 1024 / 1024",
+          "legendFormat": "Heap MB"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "HTTP Error Rate (5xx)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 6 },
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_requests_seconds_count{status=~\"5..\"}[1m]))",
+          "legendFormat": "5xx/s"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Duplicate Kafka Events (Consumer)",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 16, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(increase(flashsale_consumer_orders_total{status=\"duplicate\"}[5m]))",
+          "legendFormat": "Duplicates (5m)"
+        }
+      ]
+    }
+  ]
+}

@@ -1,19 +1,33 @@
 services:
+
   postgres:
-    image: postgres:15
+    image: postgres:15-alpine
     container_name: flashsale-postgres
     environment:
-      POSTGRES_USER: flashuser
-      POSTGRES_PASSWORD: flashpassword
-      POSTGRES_DB: flashsaledb
+      POSTGRES_USER:     ${POSTGRES_USER:-flashuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-flashpassword}
+      POSTGRES_DB:       ${POSTGRES_DB:-flashsaledb}
     ports:
       - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-flashuser} -d ${POSTGRES_DB:-flashsaledb}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   redis:
     image: redis:7-alpine
     container_name: flashsale-redis
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   kafka:
     image: apache/kafka:3.7.0
@@ -31,6 +45,39 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  app:
+    build: .
+    container_name: flashsale-app
+    ports:
+      - "8080:8080"
+    environment:
+      DB_URL:      jdbc:postgresql://postgres:5432/${POSTGRES_DB:-flashsaledb}
+      DB_USERNAME: ${POSTGRES_USER:-flashuser}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-flashpassword}
+      REDIS_HOST:  redis
+      REDIS_PORT:  6379
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      API_KEY:     ${API_KEY:-dev-api-key-change-in-production}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q '\"status\":\"UP\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   prometheus:
     image: prom/prometheus:latest
@@ -38,9 +85,11 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      - app
 
   grafana:
     image: grafana/grafana:latest
@@ -48,6 +97,14 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      GF_SECURITY_ADMIN_USER:     ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-changeme}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
     depends_on:
       - prometheus
+
+volumes:
+  postgres_data:
+  grafana_data:
