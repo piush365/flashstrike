@@ -6,21 +6,23 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.mockito.Answers;
-import org.mockito.Mockito;
 import org.redisson.api.RedissonClient;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.context.TestPropertySource;
 
 /**
- * Verifies the Spring application context loads without errors.
- * Infrastructure dependencies are replaced with mocks so this test
- * runs without external services.
+ * Verifies the Spring application context loads without external services.
+ *
+ * RedissonClient is provided via @MockBean (not @TestConfiguration) so that
+ * MockitoPostProcessor replaces the bean *definition* before Spring instantiates it.
+ * This prevents RedissonConfig from calling Redisson.create() and attempting a
+ * network connection to Redis, which would fail in CI environments with no Redis.
  */
 @SpringBootTest
 @TestPropertySource(properties = {
@@ -43,6 +45,10 @@ class FlashsaleApplicationTests {
     @MockBean KafkaTemplate<String, Object> kafkaTemplate;
     @MockBean(answer = Answers.RETURNS_DEEP_STUBS) StringRedisTemplate stringRedisTemplate;
 
+    // @MockBean replaces the RedissonConfig bean definition before instantiation —
+    // Redisson.create() is never called, so no Redis connection is attempted.
+    @MockBean(answer = Answers.RETURNS_DEEP_STUBS) RedissonClient redissonClient;
+
     @TestConfiguration
     static class TestInfraConfig {
 
@@ -50,17 +56,6 @@ class FlashsaleApplicationTests {
         @Primary
         public MeterRegistry testMeterRegistry() {
             return new SimpleMeterRegistry();
-        }
-
-        /**
-         * RETURNS_DEEP_STUBS so that redissonClient.getConfig().isClusterConfig()
-         * and similar chains return safe defaults instead of NPE.
-         * @ConditionalOnMissingBean on RedissonConfig prevents double instantiation.
-         */
-        @Bean
-        @Primary
-        public RedissonClient mockRedissonClient() {
-            return Mockito.mock(RedissonClient.class, Answers.RETURNS_DEEP_STUBS);
         }
     }
 
